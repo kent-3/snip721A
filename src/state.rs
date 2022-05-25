@@ -59,6 +59,8 @@ pub const PREFIX_RECEIVERS: &[u8] = b"receivers";
 pub const PREFIX_MINT_RUN_NUM: &[u8] = b"runnum";
 /// prefix for the storage of revoked permits
 pub const PREFIX_REVOKED_PERMITS: &str = "revoke";
+/// prefix for the storage of metadata providers
+pub const PROVIDER_KEY: &[u8] = b"providers";
 
 /// Token contract config
 #[derive(Serialize, Debug, Deserialize, Clone, PartialEq)]

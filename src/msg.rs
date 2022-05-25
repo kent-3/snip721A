@@ -404,6 +404,18 @@ pub enum HandleMsg {
         /// optional message length padding
         padding: Option<String>,
     },
+    /// add a new contract as a metadata provider
+    RegisterMetadataProvider {
+        address: HumanAddr,
+        code_hash: String
+    },
+    /// replace one metadata provider contract with another
+    UpdateMetadataProvider {
+        previous_contract: HumanAddr,
+        new_contract: HumanAddr,
+        previous_code_hash: String,
+        new_code_hash: String
+    ,}
 }
 
 /// permission access level
@@ -571,6 +583,12 @@ pub enum HandleAnswer {
         status: ResponseStatus,
     },
     RevokePermit {
+        status: ResponseStatus,
+    },
+    RegisterMetadataProvider {
+        status: ResponseStatus,
+    },
+    UpdateMetadataProvider {
         status: ResponseStatus,
     },
 }

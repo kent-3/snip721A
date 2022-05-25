@@ -11,7 +11,7 @@ use std::collections::HashSet;
 
 use secret_toolkit::{
     permit::{validate, Permit, RevokedPermits},
-    utils::{pad_handle_result, pad_query_result},
+    utils::{pad_handle_result, pad_query_result, types::Contract},
 };
 
 use crate::expiration::Expiration;
@@ -32,6 +32,7 @@ use crate::state::{
     PREFIX_ALL_PERMISSIONS, PREFIX_AUTHLIST, PREFIX_INFOS, PREFIX_MAP_TO_ID, PREFIX_MAP_TO_INDEX,
     PREFIX_MINT_RUN, PREFIX_MINT_RUN_NUM, PREFIX_OWNER_PRIV, PREFIX_PRIV_META, PREFIX_PUB_META,
     PREFIX_RECEIVERS, PREFIX_REVOKED_PERMITS, PREFIX_ROYALTY_INFO, PREFIX_VIEW_KEY, PRNG_SEED_KEY,
+    PROVIDER_KEY
 };
 use crate::token::{Metadata, Token};
 use crate::viewing_key::{ViewingKey, VIEWING_KEY_SIZE};
@@ -440,12 +441,104 @@ pub fn handle<S: Storage, A: Api, Q: Querier>(
         ),
         HandleMsg::SetContractStatus { level, .. } => {
             set_contract_status(deps, env, &mut config, level)
-        }
+        },
         HandleMsg::RevokePermit { permit_name, .. } => {
             revoke_permit(&mut deps.storage, &env.message.sender, &permit_name)
-        }
+        },
+        HandleMsg::RegisterMetadataProvider { 
+            address,
+            code_hash 
+        } => register_metadata_provider(
+            deps,
+            env,
+            address,
+            code_hash,
+        ),
+        HandleMsg::UpdateMetadataProvider {
+            previous_contract, 
+            new_contract, 
+            previous_code_hash, 
+            new_code_hash 
+        } => update_metadata_provider(
+            deps,
+            env,
+            previous_contract,
+            new_contract,
+            previous_code_hash, 
+            new_code_hash,
+        ),
     };
     pad_handle_result(response, BLOCK_SIZE)
+}
+
+/// Returns HandleResult
+/// 
+/// add a new contract as a metadata provider
+/// 
+/// # Arguments
+/// 
+/// * `deps` - mutable reference to Extern containing all the contract's external dependencies
+/// * `env` - Env of contract's environment
+/// * `address` - contract address for the new metadata provider
+/// * `code_hash` - code hash for the new metadata provider
+pub fn register_metadata_provider<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    address: HumanAddr,
+    code_hash: String,
+) -> HandleResult {
+
+    let provider = Contract {address: address.clone(), hash: code_hash};
+    save(&mut deps.storage, PROVIDER_KEY, &provider)?;
+
+    // need to implement some kind of list for multiple providers, like an appendstore
+    // will need the ability to iterate over the list of providers, 
+    // as well as match them to a list of providers if given as input
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![log("register_provider", &address)],
+        data: Some(to_binary(&HandleAnswer::RegisterMetadataProvider {
+            status: Success,
+        })?),
+    })
+}
+
+/// Returns HandleResult
+/// 
+/// replace one metadata provider contract with another
+/// 
+/// # Arguments
+/// 
+/// * `deps` - mutable reference to Extern containing all the contract's external dependencies
+/// * `env` - Env of contract's environment
+/// * `previous_contract` - contract address for the old metadata provider
+/// * `new_contract` - contract address for the new metadata provider
+/// * `previous_code_hash` - code hash for the old metadata provider
+/// * `new_code_hash` - code hash for the new metadata provider
+pub fn update_metadata_provider<S: Storage, A: Api, Q: Querier>(
+    deps: &mut Extern<S, A, Q>,
+    env: Env,
+    previous_contract: HumanAddr,
+    new_contract: HumanAddr,
+    previous_code_hash: String, 
+    new_code_hash: String,
+) -> HandleResult {
+
+    let previous_provider = Contract {address: previous_contract, hash: previous_code_hash};
+    let new_provider = Contract {address: new_contract.clone(), hash: new_code_hash};
+
+    // need to look up index of previous provider and replace the provider at that index
+
+    save(&mut deps.storage, PROVIDER_KEY, &new_provider)?;
+
+    Ok(HandleResponse {
+        messages: vec![],
+        log: vec![log("register_provider", &new_contract)],
+        data: Some(to_binary(&HandleAnswer::UpdateMetadataProvider {
+            status: Success,
+        })?),
+    })
 }
 
 /// Returns HandleResult
