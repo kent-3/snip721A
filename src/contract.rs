@@ -11,7 +11,8 @@ use std::collections::HashSet;
 
 use secret_toolkit::{
     permit::{validate, Permit, RevokedPermits},
-    utils::{pad_handle_result, pad_query_result, types::Contract},
+    utils::{pad_handle_result, pad_query_result, types::Contract, Query},
+    snip721::{nft_info_query}
 };
 
 use crate::expiration::Expiration;
@@ -19,7 +20,7 @@ use crate::inventory::{Inventory, InventoryIter};
 use crate::mint_run::{SerialNumber, StoredMintRunInfo};
 use crate::msg::{
     AccessLevel, BatchNftDossierElement, Burn, ContractStatus, Cw721Approval, Cw721OwnerOfResponse,
-    HandleAnswer, HandleMsg, InitMsg, Mint, QueryAnswer, QueryMsg, QueryWithPermit, ReceiverInfo,
+    HandleAnswer, HandleMsg, InitMsg, Mint, QueryAnswer, QueryMsg, QueryProviderMsg, NftInfoResponse, QueryWithPermit, ReceiverInfo,
     ResponseStatus::Success, Send, Snip721Approval, Transfer, ViewerInfo,
 };
 use crate::rand::sha_256;
@@ -487,8 +488,10 @@ pub fn register_metadata_provider<S: Storage, A: Api, Q: Querier>(
     address: HumanAddr,
     code_hash: String,
 ) -> HandleResult {
-
-    let provider = Contract {address: address.clone(), hash: code_hash};
+    let provider = Contract {
+        address: address.clone(),
+        hash: code_hash
+    };
     save(&mut deps.storage, PROVIDER_KEY, &provider)?;
 
     // need to implement some kind of list for multiple providers, like an appendstore
@@ -1831,7 +1834,7 @@ pub fn query<S: Storage, A: Api, Q: Querier>(deps: &Extern<S, A, Q>, msg: QueryM
             viewer,
             include_expired,
         } => query_owner_of(deps, &token_id, viewer, include_expired, None),
-        QueryMsg::NftInfo { token_id } => query_nft_info(&deps.storage, &token_id),
+        QueryMsg::NftInfo { token_id } => query_nft_info(deps, token_id),
         QueryMsg::PrivateMetadata { token_id, viewer } => {
             query_private_meta(deps, &token_id, viewer, None)
         }
@@ -2240,22 +2243,33 @@ pub fn query_owner_of<S: Storage, A: Api, Q: Querier>(
 ///
 /// * `storage` - a reference to the contract's storage
 /// * `token_id` - string slice of the token id
-pub fn query_nft_info<S: ReadonlyStorage>(storage: &S, token_id: &str) -> QueryResult {
-    let map2idx = ReadonlyPrefixedStorage::new(PREFIX_MAP_TO_INDEX, storage);
+pub fn query_nft_info<S: Storage, A: Api, Q: Querier>(
+    deps: &Extern<S, A, Q>,
+    token_id: String,
+) -> QueryResult {
+    let map2idx = ReadonlyPrefixedStorage::new(PREFIX_MAP_TO_INDEX, &deps.storage);
     let may_idx: Option<u32> = may_load(&map2idx, token_id.as_bytes())?;
     // if token id was found
     if let Some(idx) = may_idx {
-        let meta_store = ReadonlyPrefixedStorage::new(PREFIX_PUB_META, storage);
-        let meta: Metadata = may_load(&meta_store, &idx.to_le_bytes())?.unwrap_or(Metadata {
-            token_uri: None,
-            extension: None,
-        });
+        // load metadata provider contract info
+        let provider: Contract = load(&deps.storage, PROVIDER_KEY)?;
+        // query the provider contract
+        let nft_info_query = QueryProviderMsg::NftInfo { token_id };
+        let meta_response: NftInfoResponse = nft_info_query.query(
+            &deps.querier,
+            provider.hash,
+            provider.address,
+        ).unwrap_or_default();
+
+        let token_uri = meta_response.nft_info.token_uri;
+        let extension = meta_response.nft_info.extension;
+
         return to_binary(&QueryAnswer::NftInfo {
-            token_uri: meta.token_uri,
-            extension: meta.extension,
+            token_uri,
+            extension,
         });
     }
-    let config: Config = load(storage, CONFIG_KEY)?;
+    let config: Config = load(&deps.storage, CONFIG_KEY)?;
     // token id wasn't found
     // if the token supply is public, let them know the token does not exist
     if config.token_supply_is_public {

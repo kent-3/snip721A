@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use cosmwasm_std::{Binary, Coin, HumanAddr};
 use secret_toolkit::permit::Permit;
+use secret_toolkit::utils::Query;
 
 use crate::expiration::Expiration;
 use crate::mint_run::{MintRunInfo, SerialNumber};
@@ -1142,4 +1143,20 @@ pub enum QueryWithPermit {
     /// displays the number of tokens that the querier has permission to see the owner and that
     /// belong to the specified address
     NumTokensOfOwner { owner: HumanAddr },
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QueryProviderMsg {
+    /// displays the public metadata of a token
+    NftInfo { token_id: String },
+}
+
+impl Query for QueryProviderMsg {
+    const BLOCK_SIZE: usize = 256;
+}
+
+#[derive(Serialize, Deserialize, Default)]
+pub struct NftInfoResponse {
+    pub nft_info: Metadata,
 }
